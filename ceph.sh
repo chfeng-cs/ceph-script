@@ -3,7 +3,7 @@ ceph_user=$USER
 mds_hostname="AEP-50"					# MDS 主机名
 osd_hostname=("AEP-52" "AEP-53" "AEP-40")		# OSD 主机名
 osd_id=(0 1 2)							# OSD ID
-osd_pmem=("/dev/pmem4" "/dev/pmem4")	# OSD使用的PMEM
+osd_pmem=("/dev/pmem4" "/dev/pmem4" "/dev/pmem6")	# OSD使用的PMEM
 osd_num=${#osd_hostname[*]}				# OSD的个数
 
 cephfs_mount_point="/mnt/cephfs"		# ceph挂载点
@@ -64,6 +64,8 @@ stop_osd() {
 			mount_point="/var/lib/ceph/osd/ceph-${osd_id[i]}"
 			if [ `ps -aux | grep ceph-osd | wc -l` != 1 ]; then killall ceph-osd; fi
 			if [ `mount | grep ${osd_pmem[i]} | wc -l` = "1" ]; then
+				echo sleeping 
+				sleep 7
 				echo sudo umount $mount_point
 				sudo umount $mount_point
 			fi
@@ -165,23 +167,36 @@ umount_ceph() {
 	fi
 }
 
-init_env
-
-# 重建
-# remove_fs
-# rebuild_fs
-# rebuild_osd
-
-
-# 卸载
-# stop_mds
-# stop_osd
+# start		启动mds osd守护进程
+# mount		挂载cephfs
+# umount	卸载cephfs
+# stop		卸载并停止守护进程,如果是osd会卸载挂载的pmem
+# rebuild	在守护进程运行的情况下,重建cephfs,这里用于解决出现了一致性问题的情况
 
 
-# 启动
-start_mds
-start_osd
+main() {
+	init_env
+	if [ $# != 1 ]; then 
+		echo "至少传入一个参数"
+		return
+	fi
+	if [ x$1 = xstart ]; then
+		start_mds
+		start_osd
+	elif [ x$1 = xmount ]; then
+		mount_ceph
+	elif [ x$1 = xumount ]; then
+		umount_ceph
+	elif [ x$1 = xstop ]; then
+		stop_mds
+		stop_osd
+	elif [ x$1 = xrebuild ]; then
+		remove_fs
+		rebuild_osd
+		rebuild_fs
+	else
+		echo "传入的参数有误"
+	fi
+}
 
-# 挂载
-# mount_ceph
-
+main $*
