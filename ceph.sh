@@ -1,0 +1,185 @@
+# ceph 工作目录的拥有者
+ceph_user=$USER
+mds_hostname="AEP-50"					# MDS 主机名
+osd_hostname=("AEP-52" "AEP-53")		# OSD 主机名
+osd_id=(0 1)							# OSD ID
+osd_pmem=("/dev/pmem4" "/dev/pmem4")	# OSD使用的PMEM
+osd_num=${#osd_hostname[*]}				# OSD的个数
+
+cephfs_mount_point="/mnt/cephfs"		# ceph挂载点
+
+# 出错则退出
+set -o errexit
+alias ee='echo -e "\033[;32m"'
+color_mode='-e \033[;32m'
+
+# ceph 工作目录
+work_dir=("/etc/ceph")
+work_dir=(${work_dir[*]} "/var/lib/ceph")
+work_dir=(${work_dir[*]} "/var/run/ceph")
+
+init_env() {
+	sudo modprobe ib_uverbs
+	for dir in ${work_dir[@]}; do
+		# echo $dir
+		if [ ! -d $dir ]; then
+			sudo mkdir $dir
+		fi
+		sudo chmod -R 777 $dir
+		echo sudo chown -R $ceph_user:$ceph_user $dir
+		sudo chown -R $ceph_user:$ceph_user $dir
+	done
+}
+
+start_osd() {
+	for((i=0; i<$osd_num; i++)) do
+		if [ `hostname` = ${osd_hostname[i]} ]; then
+			mount_point="/var/lib/ceph/osd/ceph-${osd_id[i]}"
+			if [ `mount | grep ${osd_pmem[i]} | wc -l` = "1" ]; then
+				echo "unmount ${osd_pmem[i]}"
+				sudo umount ${osd_pmem[i]}
+			fi
+			echo "mount ${osd_pmem[i]} at $mount_point"
+			sudo mount -o user_xattr,dax ${osd_pmem[i]} $mount_point
+			ceph-osd -i ${osd_id[i]}
+		fi
+	done
+}
+
+start_mds() {
+	if [ `hostname` = $mds_hostname ]; then
+		# killall ceph-mon ceph-mgr ceph-mds
+		stop_mds
+		ceph-mon -i $mds_hostname
+		ceph-mgr -i $mds_hostname
+		ceph-mds -i $mds_hostname -m $mds_hostname:6789
+	fi
+}
+
+stop_osd() {
+	umount_ceph
+	for((i=0; i<$osd_num; i++)) do
+		if [ `hostname` = ${osd_hostname[i]} ]; then
+			echo Stopping osd.$i
+			mount_point="/var/lib/ceph/osd/ceph-${osd_id[i]}"
+			if [ `ps -aux | grep ceph-osd | wc -l` != 1 ]; then killall ceph-osd; fi
+			if [ `mount | grep ${osd_pmem[i]} | wc -l` = "1" ]; then
+				echo sudo umount $mount_point
+				sudo umount $mount_point
+			fi
+		fi
+	done
+}
+
+stop_mds() {
+	umount_ceph
+	if [ `hostname` = $mds_hostname ]; then
+		if [ `ps -aux | grep ceph | wc -l` != 1 ]; then echo Stopping mds@$mds_hostname; fi
+		if [ `ps -aux | grep ceph-mds | wc -l` != 1 ]; then sudo killall ceph-mds; fi
+		if [ `ps -aux | grep ceph-mgr | wc -l` != 1 ]; then sudo killall ceph-mgr; fi
+		if [ `ps -aux | grep ceph-mon | wc -l` != 1 ]; then sudo killall ceph-mon; fi
+	fi
+}
+
+remove_fs() {
+	if [ `hostname` != $mds_hostname ];then return; fi
+	ceph-mds -i 0 -m $mds_hostname:6789
+	killall ceph-mds
+	if [ `ceph fs ls | grep cephfs | wc -l` = "1" ]; then
+		echo ceph fs rm cephfs --yes-i-really-mean-it
+		ceph fs rm cephfs --yes-i-really-mean-it
+	fi
+	# remove osd
+	for id in `ceph osd ls`; do
+		echo ceph$h
+		ceph osd down $id
+		ceph osd rm $id
+		ceph osd crush rm osd.$id
+		# ceph auth rm osd.$ID
+	done
+	for((i=0; i<$osd_num; i++)); do
+		ceph osd crush rm ${osd_hostname[i]}
+	done
+	# remove pool
+	for pool in `ceph osd pool ls`; do
+		ceph osd pool delete $pool $pool --yes-i-really-really-mean-it
+	done
+}
+
+rebuild_fs() {
+	if [ `hostname` != $mds_hostname ];then return; fi
+	if [ `ceph fs ls | grep cephfs | wc -l` != "1" ];then
+		ceph osd pool create cephfs_data 128
+		ceph osd pool create cephfs_metadata 32
+		ceph fs new cephfs cephfs_metadata cephfs_data
+	fi
+	ceph-mds -i `hostname` -m `hostname`:6789
+}
+
+rebuild_osd() {
+	if [ `ceph osd ls | wc -l` = 0 ]; then 
+		for ((i=0; i<$osd_num; i++)); do
+			ceph osd create
+		done
+	fi
+	for((i=0; i<$osd_num; i++)) do
+		if [ `hostname` = ${osd_hostname[i]} ]; then
+			echo "rebuilding osd ${osd_hostname[i]}"
+			mount_point="/var/lib/ceph/osd/ceph-${osd_id[i]}"
+			if [ `ps -aux | grep ceph-osd | wc -l` != 1 ]; then killall ceph-osd; fi
+			if [ `mount | grep ${osd_pmem[i]} | wc -l` = "1" ]; then
+				echo sudo umount $mount_point
+				sudo umount $mount_point
+			fi
+			if [ ! -d $mount_point ]; then
+				mkdir -p $mount_point
+			fi
+			sudo mkfs.ext4 -F ${osd_pmem[i]} 1>/dev/null
+			echo "mount ${osd_pmem[i]} at $mount_point"
+			sudo mount -o user_xattr,dax ${osd_pmem[i]} $mount_point
+			sudo chown -R $ceph_user:$ceph_user $mount_point
+			ceph-osd -f -i ${osd_id[i]} --mkfs --mkkey 1>/dev/null
+			# echo ------------------------------
+			# echo ceph-osd -i ${osd_id[i]}
+			# echo ------------------------------
+			ceph-osd -i ${osd_id[i]}
+		fi
+	done
+}
+
+mount_ceph() {
+	echo mount cephfs at $cephfs_mount_point
+	if [ ! -d $cephfs_mount_point ]; then
+		sudo mkdir $cephfs_mount_point
+		sudo chown $ceph_user:$ceph_user $cephfs_mount_point
+	fi
+	if [ `mount | grep fuse.ceph-fuse | wc -l` = 0 ];then
+		sudo ceph-fuse -m $mds_hostname:6789 $cephfs_mount_point
+	fi
+}
+
+umount_ceph() {
+	if [ `mount | grep fuse.ceph-fuse | wc -l` != 0 ];then
+		echo "umount cephfs at $cephfs_mount_point " 
+		sudo umount $cephfs_mount_point
+	fi
+}
+
+init_env
+
+# 重建
+# remove_fs
+# rebuild_fs
+# rebuild_osd
+
+
+# 卸载
+stop_mds
+stop_osd
+
+
+# 启动&挂载
+# start_mds
+# start_osd
+# mount_ceph
+
