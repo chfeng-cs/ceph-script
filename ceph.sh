@@ -62,7 +62,7 @@ stop_osd() {
 		if [ `hostname` = ${osd_hostname[i]} ]; then
 			echo Stopping osd.$i
 			mount_point="/var/lib/ceph/osd/ceph-${osd_id[i]}"
-			if [ `ps -aux | grep ceph-osd | wc -l` != 1 ]; then killall ceph-osd; fi
+			if [ `ps -aux | grep ceph-osd | wc -l` != 1 ]; then sudo killall ceph-osd; fi
 			if [ `mount | grep ${osd_pmem[i]} | wc -l` = "1" ]; then
 				echo sleeping 
 				sleep 7
