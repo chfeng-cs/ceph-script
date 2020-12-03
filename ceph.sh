@@ -1,12 +1,11 @@
-# ceph 工作目录的拥有者
-ceph_user=$USER
-mds_hostname="AEP-50"					# MDS 主机名
+#!/bin/bash
+ceph_user=$USER									# ceph 工作目录的拥有者
+mds_hostname="AEP-50"							# MDS 主机名
 osd_hostname=("AEP-52" "AEP-53" "AEP-40")		# OSD 主机名
-osd_id=(0 1 2)							# OSD ID
+osd_id=(0 1 2)									# OSD ID
 osd_pmem=("/dev/pmem4" "/dev/pmem4" "/dev/pmem6")	# OSD使用的PMEM
-osd_num=${#osd_hostname[*]}				# OSD的个数
-
-cephfs_mount_point="/mnt/cephfs"		# ceph挂载点
+osd_num=${#osd_hostname[*]}						# OSD的个数
+cephfs_mount_point="/mnt/cephfs"				# ceph挂载点
 
 # 出错则退出
 set -o errexit
@@ -85,8 +84,8 @@ stop_mds() {
 
 remove_fs() {
 	if [ `hostname` != $mds_hostname ];then return; fi
-	ceph-mds -i 0 -m $mds_hostname:6789
-	killall ceph-mds
+	if [ `ps -aux | grep ceph-mds | wc -l` != 1 ]; then sudo killall ceph-mds; fi
+	ceph mds fail $mds_hostname
 	if [ `ceph fs ls | grep cephfs | wc -l` = "1" ]; then
 		echo ceph fs rm cephfs --yes-i-really-mean-it
 		ceph fs rm cephfs --yes-i-really-mean-it
@@ -158,6 +157,7 @@ mount_ceph() {
 	if [ `mount | grep fuse.ceph-fuse | wc -l` = 0 ];then
 		sudo ceph-fuse -m $mds_hostname:6789 $cephfs_mount_point
 	fi
+	sudo chown $ceph_user:$ceph_user $cephfs_mount_point
 }
 
 umount_ceph() {
@@ -165,6 +165,53 @@ umount_ceph() {
 		echo "umount cephfs at $cephfs_mount_point " 
 		sudo umount $cephfs_mount_point
 	fi
+}
+
+set_replica() {
+	ceph_conf_file="/etc/ceph/ceph.conf"
+	echo changing $ceph_conf_file: osd pool default size = $1
+	sed -i "s/osd pool default size = .*/osd pool default size = $1/g" $ceph_conf_file
+	start_mds
+	stop_osd
+	remove_fs
+	rebuild_osd
+	rebuild_fs
+}
+
+get_replica() {
+	daemon_name=none
+	if [ `hostname` = $mds_hostname ];then daemon_name="mon.$mds_hostname"; fi
+	for((i=0; i<$osd_num; i++)) do
+		if [ `hostname` = ${osd_hostname[i]} ]; then
+			daemon_name="osd.${osd_id[i]}"
+		fi
+	done
+	if [ $daemon_name = none ];then return; fi
+	s1=`ceph daemon $daemon_name config show | grep osd_pool_default_size`
+	echo $s1
+}
+
+check_replica() {
+	daemon_name=none
+	if [ `hostname` = $mds_hostname ];then daemon_name="mon.$mds_hostname"; fi
+	for((i=0; i<$osd_num; i++)) do
+		if [ `hostname` = ${osd_hostname[i]} ]; then
+			daemon_name="osd.${osd_id[i]}"
+		fi
+	done
+	if [ $daemon_name = none ];then return; fi
+	echo ceph daemon $daemon_name config show grep osd_pool_default_size
+	s1=`ceph daemon $daemon_name config show | grep osd_pool_default_size`
+	s2="    \"osd_pool_default_size\": \"$1\","
+	echo $s1
+	echo $s2
+	if [ "$s1" != "$s2" ]; then
+		echo "check failed"
+		echo $s1
+		exit 1
+	else
+		echo The number of replications is OK: $1
+	fi 
 }
 
 # start		启动mds osd守护进程
@@ -176,7 +223,7 @@ umount_ceph() {
 
 main() {
 	init_env
-	if [ $# != 1 ]; then 
+	if [ $# = 0 ]; then 
 		echo "至少传入一个参数"
 		return
 	fi
@@ -194,6 +241,11 @@ main() {
 		remove_fs
 		rebuild_osd
 		rebuild_fs
+	elif [ x$1 = x-r ]; then
+		set_replica $2
+		check_replica $2
+	elif [ x$1 = x-g ]; then
+		get_replica
 	else
 		echo "传入的参数有误"
 	fi
