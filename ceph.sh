@@ -1,8 +1,8 @@
 # ceph 工作目录的拥有者
 ceph_user=$USER
 mds_hostname="AEP-50"					# MDS 主机名
-osd_hostname=("AEP-52" "AEP-53")		# OSD 主机名
-osd_id=(0 1)							# OSD ID
+osd_hostname=("AEP-52" "AEP-53" "AEP-42")		# OSD 主机名
+osd_id=(0 1 2)							# OSD ID
 osd_pmem=("/dev/pmem4" "/dev/pmem4")	# OSD使用的PMEM
 osd_num=${#osd_hostname[*]}				# OSD的个数
 
@@ -175,11 +175,13 @@ init_env
 
 # 卸载
 stop_mds
-stop_osd
+# stop_osd
 
 
-# 启动&挂载
-# start_mds
-# start_osd
+# 启动
+start_mds
+start_osd
+
+# 挂载
 # mount_ceph
 
