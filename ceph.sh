@@ -1,7 +1,7 @@
 # ceph 工作目录的拥有者
 ceph_user=$USER
 mds_hostname="AEP-50"					# MDS 主机名
-osd_hostname=("AEP-52" "AEP-53" "AEP-42")		# OSD 主机名
+osd_hostname=("AEP-52" "AEP-53" "AEP-40")		# OSD 主机名
 osd_id=(0 1 2)							# OSD ID
 osd_pmem=("/dev/pmem4" "/dev/pmem4")	# OSD使用的PMEM
 osd_num=${#osd_hostname[*]}				# OSD的个数
@@ -10,8 +10,8 @@ cephfs_mount_point="/mnt/cephfs"		# ceph挂载点
 
 # 出错则退出
 set -o errexit
-alias ee='echo -e "\033[;32m"'
-color_mode='-e \033[;32m'
+# alias ee='echo -e "\033[;32m"'
+# color_mode='-e \033[;32m'
 
 # ceph 工作目录
 work_dir=("/etc/ceph")
@@ -174,7 +174,7 @@ init_env
 
 
 # 卸载
-stop_mds
+# stop_mds
 # stop_osd
 
 
