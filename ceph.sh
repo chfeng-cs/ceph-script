@@ -1,9 +1,9 @@
 #!/bin/bash
 ceph_user=$USER									# ceph 工作目录的拥有者
-mds_hostname="AEP-50"							# MDS 主机名
-osd_hostname=("AEP-52" "AEP-53" "AEP-40")		# OSD 主机名
-osd_id=(0 1 2)									# OSD ID
-osd_pmem=("/dev/pmem4" "/dev/pmem4" "/dev/pmem6")	# OSD使用的PMEM
+mds_hostname="AEP-52"							# MDS 主机名
+osd_hostname=("AEP-53")		# OSD 主机名
+osd_id=(0)									# OSD ID
+osd_pmem=("/dev/pmem12")	# OSD使用的PMEM
 osd_num=${#osd_hostname[*]}						# OSD的个数
 cephfs_mount_point="/mnt/cephfs"				# ceph挂载点
 
@@ -135,6 +135,7 @@ rebuild_osd() {
 			if [ ! -d $mount_point ]; then
 				mkdir -p $mount_point
 			fi
+			echo sudo mkfs.ext4 -F ${osd_pmem[i]}
 			sudo mkfs.ext4 -F ${osd_pmem[i]} 1>/dev/null
 			echo "mount ${osd_pmem[i]} at $mount_point"
 			sudo mount -o user_xattr,dax ${osd_pmem[i]} $mount_point
