@@ -1,9 +1,9 @@
 #!/bin/bash
 ceph_user=$USER									# ceph 工作目录的拥有者
-mds_hostname="AEP-52"							# MDS 主机名
-osd_hostname=("AEP-40" "AEP-41" "AEP-53")		# OSD 主机名
+mds_hostname="AEP-50"							# MDS 主机名
+osd_hostname=("AEP-52" "AEP-53" "AEP-41")		# OSD 主机名
 osd_id=(0 1 2)									# OSD ID
-osd_pmem=("/dev/pmem6" "/dev/pmem6" "/dev/pmem12")	# OSD使用的PMEM
+osd_pmem=("/dev/pmem12" "/dev/pmem12" "/dev/pmem6")	# OSD使用的PMEM
 osd_num=${#osd_hostname[*]}						# OSD的个数
 cephfs_mount_point="/mnt/cephfs"				# ceph挂载点
 
