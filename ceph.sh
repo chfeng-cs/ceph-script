@@ -156,6 +156,7 @@ mount_ceph() {
 		sudo chown $ceph_user:$ceph_user $cephfs_mount_point
 	fi
 	if [ `mount | grep fuse.ceph-fuse | wc -l` = 0 ];then
+		sudo rm -rf $cephfs_mount_point/*
 		sudo ceph-fuse -m $mds_hostname:6789 $cephfs_mount_point
 	fi
 	sudo chown $ceph_user:$ceph_user $cephfs_mount_point
